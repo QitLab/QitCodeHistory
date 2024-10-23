@@ -7,16 +7,14 @@ add_library(
         ${appCPP}
 )
 
-# 导入静态库
-add_library(getndk-lib STATIC IMPORTED)
-# 开始真正导入
+include_directories(${CMAKE_SOURCE_DIR}/include)
 
-set_target_properties(getndk-lib PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/libgetndk-lib.a)
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/${CMAKE_ANDROID_ARCH_ABI}")
 
 find_library(log-lib log)
 target_link_libraries(
         native-lib
+        -Wl,--start-group # 因为导入存在相互依赖，所以需要按依赖顺序导入，此标签可以忽略顺序
+        avcodec avfilter avformat avutil swresample swscale
         ${log-lib}
-        getndk-lib
 )

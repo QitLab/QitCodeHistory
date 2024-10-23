@@ -14,11 +14,11 @@ android {
         versionName = "1.0"
         externalNativeBuild {
             cmake {
-                abiFilters.add("arm64-v8a")
+                abiFilters.add("armeabi-v7a")
             }
         }
         ndk {
-            abiFilters.add("arm64-v8a")
+            abiFilters.add("armeabi-v7a")
         }
     }
 
