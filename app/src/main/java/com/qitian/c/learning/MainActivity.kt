@@ -1,5 +1,6 @@
 package com.qitian.c.learning
 
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Toast
@@ -21,14 +22,22 @@ class MainActivity : AppCompatActivity() {
 
         // Example of a call to a native method
         binding.sampleText.text = stringFromJNI()
-
+        player.setSurfaceView(binding.surfaceView)
         player.dataSource = File("${Environment.getExternalStorageDirectory()}${File.separator}demo.mp4").absolutePath
-        player.onPreparedListener = object : QPlayer.OnPreparedListener() {
+        player.onPreparedListener = object : QPlayer.OnPreparedListener {
             override fun onPrepared(){
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity,"准备成功，即将开始播放",Toast.LENGTH_SHORT).show()
+                    binding.tvState.setTextColor(Color.GREEN)
+                    binding.tvState.text = "准备成功，即将开始播放"
                 }
                 player.start()
+            }
+
+            override fun onError(msg: String) {
+                runOnUiThread {
+                    binding.tvState.setTextColor(Color.RED)
+                    binding.tvState.text = "error : "+msg
+                }
             }
         }
 

@@ -13,6 +13,7 @@ JNICallbackHelper::JNICallbackHelper(JavaVM *vm, JNIEnv *env, jobject job) {
     jclass clazz = env->GetObjectClass(job);
 
     jmd_prepared = env->GetMethodID(clazz, "onPrepared", "()V");
+    jmd_prepare_error = env->GetMethodID(clazz, "onPrepareError", "(I)V");
 }
 
 JNICallbackHelper::~JNICallbackHelper() {
@@ -29,6 +30,17 @@ void JNICallbackHelper::onPrepared(int thread_mode) {
         JNIEnv *env_child;
         vm->AttachCurrentThread(&env_child, 0);
         env_child->CallVoidMethod(job, jmd_prepared);
+        vm->DetachCurrentThread();
+    }
+}
+
+void JNICallbackHelper::onPrepareError(int thread_mode, int error_code) {
+    if (thread_mode == THREAD_MAIN) {
+        env->CallVoidMethod(job, jmd_prepare_error, error_code);
+    } else if (thread_mode == THREAD_CHILD) {
+        JNIEnv *env_child;
+        vm->AttachCurrentThread(&env_child, 0);
+        env_child->CallVoidMethod(job, jmd_prepare_error, error_code);
         vm->DetachCurrentThread();
     }
 }

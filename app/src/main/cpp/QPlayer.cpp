@@ -54,7 +54,8 @@ void QPlayer::prepare_() {
     av_dict_free(&dictionary);
 
     if (r) {
-        logd("avformat_open_input : %d",r)
+        helper->onPrepareError(THREAD_CHILD, 1);
+//        char * error = av_err2str(r);
         //通过JNI回调到Java
         return;
     }
@@ -64,7 +65,7 @@ void QPlayer::prepare_() {
     r = avformat_find_stream_info(formatContext, 0);
     if (r < 0) {
         //通过JNI回调到Java
-        logd("avformat_find_stream_info : %d",r)
+        helper->onPrepareError(THREAD_CHILD, 2);
         return;
     }
 
@@ -84,13 +85,18 @@ void QPlayer::prepare_() {
          * 第六步：根据上面的参数获取编码器
          */
         AVCodec *codec = avcodec_find_decoder(parameters->codec_id);
+        if (!codec) {
+            if (helper) {
+                helper->onPrepareError(THREAD_CHILD, 3);
+            }
+        }
         /**
          * 第七步：获取编解码器上下文
          */
         AVCodecContext *codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) {
             //通过JNI回调到Java
-            logd("avcodec_alloc_context3 : %d",r)
+            helper->onPrepareError(THREAD_CHILD, 4);
 
             return;
         }
@@ -100,8 +106,7 @@ void QPlayer::prepare_() {
         r = avcodec_parameters_to_context(codecContext, parameters);
         if (r < 0) {
             //通过JNI回调到Java
-            logd("avcodec_parameters_to_context : %d",r)
-
+            helper->onPrepareError(THREAD_CHILD, 6);
             return;
         }
         /**
@@ -110,7 +115,7 @@ void QPlayer::prepare_() {
         r = avcodec_open2(codecContext, codec, 0);
         if (r) {
             //通过JNI回调到Java
-            logd("avcodec_open2 : %d",r)
+            helper->onPrepareError(THREAD_CHILD, 7);
 
             return;
         }
@@ -118,9 +123,10 @@ void QPlayer::prepare_() {
          * 第十步：从编解码器参数中获取流类型 codec_type
          */
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
-            audio_channel = new AudioChannel();
+            audio_channel = new AudioChannel(i, codecContext);
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
-            video_channel = new VideoChannel();
+            video_channel = new VideoChannel(i, codecContext);
+            video_channel->setRenderCallback(renderCallback);
         }
     }
     /**
@@ -128,7 +134,7 @@ void QPlayer::prepare_() {
      */
     if (!audio_channel && !video_channel) {
         //JNI回调到Java
-        logd("audio_channel : %d",r)
+        helper->onPrepareError(THREAD_CHILD, 8);
 
         return;
     }
@@ -139,4 +145,55 @@ void QPlayer::prepare_() {
         logd("准备成功，通知上层")
         helper->onPrepared(THREAD_CHILD);
     }
+}
+
+void *task_start(void *args) {
+    auto *player = static_cast<QPlayer *>(args);
+    player->start_();
+    return 0;
+}
+
+void QPlayer::start() {
+    isPlaying = 1;
+    if (video_channel){
+        video_channel->start();
+    }
+//    if (audio_channel){
+//        audio_channel->start();
+//    }
+    //把音视频压缩包加入队列
+    pthread_create(&pid_start, 0, task_start, this);
+}
+
+void QPlayer::start_() {//子线程
+    while (isPlaying) {
+        //VPacket 可能是音频也可能是视频（压缩包）
+        AVPacket *packet = av_packet_alloc();
+        int r = av_read_frame(formatContext, packet);
+        if (!r) {
+            // AudioChannel
+            // VideoChannel
+            //把AVPacket加入到队列，
+            if (video_channel && video_channel->stream_index == packet->stream_index) {
+                video_channel->packets.offer(packet);
+            } else if (audio_channel && audio_channel->stream_index == packet->stream_index) {
+                audio_channel->packets.offer(packet);
+            }
+
+        }
+        else if (r == AVERROR_EOF) {
+            //文件播放完成
+        }
+        else {
+            break;
+        }
+
+    }
+    isPlaying = 0;
+    video_channel->stop();
+    audio_channel->stop();
+}
+
+void QPlayer::setRenderCallback(RenderCallback renderCallback) {
+    this->renderCallback = renderCallback;
 }
