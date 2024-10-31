@@ -11,17 +11,19 @@
 
 class JNICallbackHelper {
 private:
-    JavaVM *vm = 0;
-    JNIEnv *env = 0;
-    jobject job;
-    jmethodID  jmd_prepared;
-    jmethodID  jmd_prepare_error;
+    JavaVM *vm{};
+    JNIEnv *env{};
+    jobject job{};
+    jmethodID jmd_prepared{};
+    jmethodID jmd_prepare_error{};
 
 public:
     JNICallbackHelper(JavaVM *pVm, JNIEnv *pEnv, jobject job);
+
     virtual ~JNICallbackHelper();
 
     void onPrepared(int thread_mode);
+
     void onPrepareError(int thread_mode, int error_code);
 };
 

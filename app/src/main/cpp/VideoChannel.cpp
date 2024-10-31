@@ -10,35 +10,39 @@ VideoChannel::VideoChannel(int stream_index, AVCodecContext *codecContext) : Bas
 
 }
 
-VideoChannel::~VideoChannel() {}
+VideoChannel::~VideoChannel() = default;
 
 void *task_video_decode(void *args) {
     auto *video_channel = static_cast<VideoChannel *>(args);
     video_channel->video_decode();
-    return 0;
+    return nullptr;
 }
 
 void *task_video_play(void *args) {
     auto *video_channel = static_cast<VideoChannel *>(args);
     video_channel->video_play();
-    return 0;
+    return nullptr;
 }
 
 void VideoChannel::start() {
-    isPlaying = 1;
+    isPlaying = true;
     //队列开始工作
     packets.setWork(1);
     frames.setWork(1);
     //第一个线程，取出队列压缩包，进行解码，解码后的原始包再push到队列中
-    pthread_create(&pid_video_decode, 0, task_video_decode, this);
+    pthread_create(&pid_video_decode, nullptr, task_video_decode, this);
     //第二个线程：从队里取出原始包，播放
-    pthread_create(&pid_video_play, 0, task_video_play, this);
+    pthread_create(&pid_video_play, nullptr, task_video_play, this);
 
 }
 
 void VideoChannel::video_decode() {
-    AVPacket *packet = 0;
+    AVPacket *packet = nullptr;
     while (isPlaying) {
+        if(isPlaying && frames.size() > 100){
+            av_usleep(10 * 1000);
+            continue;
+        }
         int r = packets.pop(packet);
         if (!isPlaying) {
             break;
@@ -59,6 +63,9 @@ void VideoChannel::video_decode() {
             //B帧会参考前后，等待P帧出来
             continue;
         } else if (r != 0) {
+            if(avFrame){
+                releaseAVFrame(&avFrame);
+            }
             break;
         }
 
@@ -69,7 +76,7 @@ void VideoChannel::video_decode() {
 
 void VideoChannel::video_play() {
     // 原始包YUV -> android是RGB，需要libswscale
-    AVFrame *frame = 0;
+    AVFrame *frame = nullptr;
     uint8_t *dst_data[4];//RGBA
     int dst_linesize[4];
     av_image_alloc(
@@ -88,7 +95,7 @@ void VideoChannel::video_play() {
             codecContext->height,
             AV_PIX_FMT_RGBA,
             SWS_BILINEAR,
-            NULL, NULL, NULL//特效不需要
+            nullptr, nullptr, nullptr//特效不需要
     );
     while (isPlaying) {
         int r = frames.pop(frame);
@@ -115,13 +122,13 @@ void VideoChannel::video_play() {
         releaseAVFrame(&frame);
     }
     releaseAVFrame(&frame);
-    isPlaying = 0;
+    isPlaying = false;
     av_free(&dst_data);
     sws_freeContext(sws_context);
 }
 
-void VideoChannel::setRenderCallback(RenderCallback renderCallback) {
-    this->renderCallback = renderCallback;
+void VideoChannel::setRenderCallback(RenderCallback callback) {
+    this->renderCallback = callback;
 }
 
 void VideoChannel::stop() {

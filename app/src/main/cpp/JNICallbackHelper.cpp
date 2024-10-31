@@ -17,10 +17,10 @@ JNICallbackHelper::JNICallbackHelper(JavaVM *vm, JNIEnv *env, jobject job) {
 }
 
 JNICallbackHelper::~JNICallbackHelper() {
-    vm = 0;
+    vm = nullptr;
     env->DeleteGlobalRef(job);
-    job = 0;
-    env = 0;
+    job = nullptr;
+    env = nullptr;
 }
 
 void JNICallbackHelper::onPrepared(int thread_mode) {
@@ -28,7 +28,7 @@ void JNICallbackHelper::onPrepared(int thread_mode) {
         env->CallVoidMethod(job, jmd_prepared);
     } else if (thread_mode == THREAD_CHILD) {
         JNIEnv *env_child;
-        vm->AttachCurrentThread(&env_child, 0);
+        vm->AttachCurrentThread(&env_child, nullptr);
         env_child->CallVoidMethod(job, jmd_prepared);
         vm->DetachCurrentThread();
     }
@@ -39,7 +39,7 @@ void JNICallbackHelper::onPrepareError(int thread_mode, int error_code) {
         env->CallVoidMethod(job, jmd_prepare_error, error_code);
     } else if (thread_mode == THREAD_CHILD) {
         JNIEnv *env_child;
-        vm->AttachCurrentThread(&env_child, 0);
+        vm->AttachCurrentThread(&env_child, nullptr);
         env_child->CallVoidMethod(job, jmd_prepare_error, error_code);
         vm->DetachCurrentThread();
     }

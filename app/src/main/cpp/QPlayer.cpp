@@ -17,13 +17,8 @@ QPlayer::QPlayer(const char *data_source, JNICallbackHelper *helper) {
 }
 
 QPlayer::~QPlayer() {
-    if (data_source) {
-        delete data_source;
-    }
-
-    if (helper) {
-        delete helper;
-    }
+    delete data_source;
+    delete helper;
 }
 
 void *task_prepare(void *args) {// 此函数和QPlayer对象无关，无法访问QPlayer的私有变量
@@ -31,17 +26,17 @@ void *task_prepare(void *args) {// 此函数和QPlayer对象无关，无法访�
     auto *player = static_cast<QPlayer *>(args);
     player->prepare_();
 
-    return 0;
+    return nullptr;
 }
 
 void QPlayer::prepare() {
-    pthread_create(&pid_prepare, 0, task_prepare, this);
+    pthread_create(&pid_prepare, nullptr, task_prepare, this);
 }
 
 void QPlayer::prepare_() {
     // 因为FFMpeg是纯C的面向过程，所以要定义大量的Context贯彻环境
     formatContext = avformat_alloc_context();
-    AVDictionary *dictionary = 0;
+    AVDictionary *dictionary = nullptr;
     av_dict_set(&dictionary, "timeout", "5000000", 0);
 
     /**
@@ -50,7 +45,7 @@ void QPlayer::prepare_() {
      * 3. AVInputFormat *fmt  MAC/Win摄像头麦克风等，安卓用不到
      * 4. 各种设置项：如 http超时时间，打开rtmp超时等
      */
-    int r = avformat_open_input(&formatContext, data_source, 0, &dictionary);
+    int r = avformat_open_input(&formatContext, data_source, nullptr, &dictionary);
     // 释放
     av_dict_free(&dictionary);
 
@@ -63,7 +58,7 @@ void QPlayer::prepare_() {
     /**
      * 第二步：查找媒体中心的音视频流信息
      */
-    r = avformat_find_stream_info(formatContext, 0);
+    r = avformat_find_stream_info(formatContext, nullptr);
     if (r < 0) {
         //通过JNI回调到Java
         helper->onPrepareError(THREAD_CHILD, 2);
@@ -73,11 +68,11 @@ void QPlayer::prepare_() {
     /**
      * 第三步：根据留信息，流个数，用循环查找
      */
-    for (int i = 0; i < formatContext->nb_streams; ++i) {
+    for (int stream_index = 0; stream_index < formatContext->nb_streams; ++stream_index) {
         /**
          * 第四步：获取媒体流（视频，音频）
          */
-        AVStream *stream = formatContext->streams[i];
+        AVStream *stream = formatContext->streams[stream_index];
         /**
          * 第五步：从上面的流中获取编解码参数
          */
@@ -113,7 +108,7 @@ void QPlayer::prepare_() {
         /**
          * 第九步：打开解码器
          */
-        r = avcodec_open2(codecContext, codec, 0);
+        r = avcodec_open2(codecContext, codec, nullptr);
         if (r) {
             //通过JNI回调到Java
             helper->onPrepareError(THREAD_CHILD, 7);
@@ -124,9 +119,9 @@ void QPlayer::prepare_() {
          * 第十步：从编解码器参数中获取流类型 codec_type
          */
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
-            audio_channel = new AudioChannel(i, codecContext);
+            audio_channel = new AudioChannel(stream_index, codecContext);
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
-            video_channel = new VideoChannel(i, codecContext);
+            video_channel = new VideoChannel(stream_index, codecContext);
             video_channel->setRenderCallback(renderCallback);
         }
     }
@@ -151,23 +146,31 @@ void QPlayer::prepare_() {
 void *task_start(void *args) {
     auto *player = static_cast<QPlayer *>(args);
     player->start_();
-    return 0;
+    return nullptr;
 }
 
 void QPlayer::start() {
-    isPlaying = 1;
-    if (video_channel){
+    isPlaying = true;
+    if (video_channel) {
         video_channel->start();
     }
-    if (audio_channel){
+    if (audio_channel) {
         audio_channel->start();
     }
     //把音视频压缩包加入队列
-    pthread_create(&pid_start, 0, task_start, this);
+    pthread_create(&pid_start, nullptr, task_start, this);
 }
 
 void QPlayer::start_() {//子线程
     while (isPlaying) {
+        if(video_channel && video_channel->packets.size() > 100){
+            av_usleep(10*1000);
+            continue;
+        }
+        if(audio_channel && audio_channel->packets.size() > 100){
+            av_usleep(10*1000);
+            continue;
+        }
         //VPacket 可能是音频也可能是视频（压缩包）
         AVPacket *packet = av_packet_alloc();
         int r = av_read_frame(formatContext, packet);
@@ -181,20 +184,21 @@ void QPlayer::start_() {//子线程
                 audio_channel->packets.offer(packet);
             }
 
-        }
-        else if (r == AVERROR_EOF) {
+        } else if (r == AVERROR_EOF) {
             //文件播放完成
-        }
-        else {
+            if(video_channel->packets.empty() && audio_channel->packets.empty()){
+                break;
+            }
+        } else {
             break;
         }
 
     }
-    isPlaying = 0;
+    isPlaying = false;
     video_channel->stop();
     audio_channel->stop();
 }
 
-void QPlayer::setRenderCallback(RenderCallback renderCallback) {
-    this->renderCallback = renderCallback;
+void QPlayer::setRenderCallback(RenderCallback callback) {
+    this->renderCallback = callback;
 }

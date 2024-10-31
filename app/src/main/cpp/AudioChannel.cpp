@@ -74,6 +74,10 @@ void AudioChannel::start() {
 void AudioChannel::audio_decode() {
     AVPacket *packet = 0;
     while (isPlaying) {
+         if(isPlaying && frames.size() > 100){
+            av_usleep(10 * 1000);
+            continue;
+        }
         int r = packets.pop(packet);
         if (!isPlaying) {
             break;
@@ -84,8 +88,6 @@ void AudioChannel::audio_decode() {
 
         //新旧差别大
         r = avcodec_send_packet(codecContext, packet);
-        //FFMpeg内部会缓存一会packet,所以这里要把我们的释放掉
-        releaseAVPacket(&packet);
         if (r) {
             break;
         }
@@ -97,10 +99,16 @@ void AudioChannel::audio_decode() {
             continue;
         } else if (r != 0) {
             //错误
+            if(avFrame){
+                releaseAVFrame(&avFrame);
+            }
             break;
         }
 
         frames.offer(avFrame);
+
+        //FFMpeg内部会缓存一会packet,所以这里要把我们的释放掉
+        releaseAVPacket(&packet);
     }
     releaseAVPacket(&packet);
 }
