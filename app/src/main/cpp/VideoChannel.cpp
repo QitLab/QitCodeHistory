@@ -29,7 +29,7 @@ void VideoChannel::start() {
     //队列开始工作
     packets.setWork(1);
     frames.setWork(1);
-    //第一个线程，取出队列压缩包，进行编码，编码后的原始包再push到队列中
+    //第一个线程，取出队列压缩包，进行解码，解码后的原始包再push到队列中
     pthread_create(&pid_video_decode, 0, task_video_decode, this);
     //第二个线程：从队里取出原始包，播放
     pthread_create(&pid_video_play, 0, task_video_play, this);
@@ -56,6 +56,7 @@ void VideoChannel::video_decode() {
         AVFrame *avFrame = av_frame_alloc();
         r = avcodec_receive_frame(codecContext, avFrame);
         if (r == AVERROR(EAGAIN)) {
+            //B帧会参考前后，等待P帧出来
             continue;
         } else if (r != 0) {
             break;

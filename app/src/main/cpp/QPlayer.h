@@ -14,11 +14,7 @@
 
 extern "C" {
 #include "libavformat/avformat.h"
-};
-
-#include <android/log.h>
-#define logd(...) __android_log_print(ANDROID_LOG_DEBUG, TAG , __VA_ARGS__);
-#define TAG "QQQit"
+}
 
 class QPlayer {
 private:

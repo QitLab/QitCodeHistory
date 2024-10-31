@@ -3,6 +3,7 @@
 //
 
 #include "QPlayer.h"
+#include "qlog.h"
 
 QPlayer::QPlayer(const char *data_source, JNICallbackHelper *helper) {
 //  this->data_source = data_source;
@@ -142,7 +143,7 @@ void QPlayer::prepare_() {
      * 第十二步：准备成功，通知上层
      */
     if (helper) {
-        logd("准备成功，通知上层")
+        qlogd("准备成功，通知上层")
         helper->onPrepared(THREAD_CHILD);
     }
 }
@@ -158,9 +159,9 @@ void QPlayer::start() {
     if (video_channel){
         video_channel->start();
     }
-//    if (audio_channel){
-//        audio_channel->start();
-//    }
+    if (audio_channel){
+        audio_channel->start();
+    }
     //把音视频压缩包加入队列
     pthread_create(&pid_start, 0, task_start, this);
 }

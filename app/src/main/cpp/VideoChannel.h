@@ -23,11 +23,9 @@ public:
     virtual ~VideoChannel();
 
     void start();
-    void stop();
-
     void video_decode();
-
     void video_play();
+    void stop();
 
     void setRenderCallback(RenderCallback renderCallback);
 };

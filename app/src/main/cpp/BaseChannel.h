@@ -9,6 +9,7 @@ extern "C" {
 };
 
 #include "safe_queue.h"
+#include "qlog.h"
 
 class BaseChannel {
 private:

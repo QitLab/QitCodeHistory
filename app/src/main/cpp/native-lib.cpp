@@ -1,18 +1,14 @@
 #include <jni.h>
 #include <string>
 
-#include <android/log.h>
 #include "QPlayer.h"
 #include "JNICallbackHelper.h"
 #include "android/native_window_jni.h"
-
-#define TAG "QQQit"
 
 extern "C" {
 #include "ffmpeg/include/libavutil/avutil.h"
 };
 
-#define logd(...) __android_log_print(ANDROID_LOG_DEBUG, TAG , __VA_ARGS__);
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_qitian_c_learning_MainActivity_stringFromJNI(
         JNIEnv *env,
