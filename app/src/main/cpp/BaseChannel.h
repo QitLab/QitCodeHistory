@@ -11,6 +11,7 @@ extern "C" {
 
 #include "safe_queue.h"
 #include "qlog.h"
+#include "JNICallbackHelper.h"
 
 class BaseChannel {
 private:
@@ -22,6 +23,9 @@ public:
     AVCodecContext *codecContext{};//解码器上下文
 
     AVRational time_base{};
+    JNICallbackHelper *jnihelper{};
+
+
 
     BaseChannel(int stream_index, AVCodecContext *codecContext, AVRational time_base)
             : stream_index(stream_index),
@@ -36,12 +40,15 @@ public:
         frames.clear();
     }
 
+    void setJNICallbackHelper(JNICallbackHelper *helper){
+        jnihelper = helper;
+    }
+
     /**
      * 释放队列中所有AVPacket
      * @param p
      */
     static void releaseAVPacket(AVPacket **packet) {
-        \
         av_packet_unref(*packet);
         if (*packet) {
             av_packet_free(packet);

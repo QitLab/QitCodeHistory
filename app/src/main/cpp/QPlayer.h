@@ -22,12 +22,17 @@ private:
     char *data_source{};
     pthread_t pid_prepare{};
     pthread_t pid_start{};
+    pthread_t pid_stop{};
     AVFormatContext *formatContext{};
     AudioChannel *audio_channel{};
     VideoChannel *video_channel{};
     JNICallbackHelper *helper{};
     bool isPlaying{};//是否播放
     RenderCallback renderCallback{};
+
+    double duration{};
+
+    pthread_mutex_t  seek_mutex{};
 
 public:
     QPlayer(const char *data_source, JNICallbackHelper *helper);
@@ -44,6 +49,14 @@ public:
     void start_();
 
     void setRenderCallback(RenderCallback renderCallback);
+
+    double getDuration();
+
+    void seek(double play_progress);
+
+    void stop();
+
+    void stop_(QPlayer * player);
 };
 
 

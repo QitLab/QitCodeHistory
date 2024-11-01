@@ -14,11 +14,13 @@ QPlayer::QPlayer(const char *data_source, JNICallbackHelper *helper) {
     strcpy(this->data_source, data_source);
 
     this->helper = helper;
+    pthread_mutex_init(&seek_mutex, nullptr);
 }
 
 QPlayer::~QPlayer() {
     delete data_source;
     delete helper;
+    pthread_mutex_destroy(&seek_mutex);
 }
 
 void *task_prepare(void *args) {// 此函数和QPlayer对象无关，无法访问QPlayer的私有变量
@@ -50,10 +52,11 @@ void QPlayer::prepare_() {
     av_dict_free(&dictionary);
 
     if (r) {
-        qlogd("onPrepareError %d",r)
-        helper->onPrepareError(THREAD_CHILD, 1);
-//        char * error = av_err2str(r);
-        //通过JNI回调到Java
+        qlogd("onPrepareError %d", r)
+        if (helper) {
+            helper->onPrepareError(THREAD_CHILD, 1);
+        }
+        avformat_close_input(&formatContext);
         return;
     }
     /**
@@ -62,13 +65,18 @@ void QPlayer::prepare_() {
     r = avformat_find_stream_info(formatContext, nullptr);
     if (r < 0) {
         //通过JNI回调到Java
-        helper->onPrepareError(THREAD_CHILD, 2);
+        if (helper) {
+            helper->onPrepareError(THREAD_CHILD, 2);
+        }
+        avformat_close_input(&formatContext);
         return;
     }
+    this->duration = formatContext->duration / AV_TIME_BASE;
 
     /**
      * 第三步：根据留信息，流个数，用循环查找
      */
+    AVCodecContext *codecContext = nullptr;
     for (int stream_index = 0; stream_index < formatContext->nb_streams; ++stream_index) {
         /**
          * 第四步：获取媒体流（视频，音频）
@@ -90,11 +98,14 @@ void QPlayer::prepare_() {
         /**
          * 第七步：获取编解码器上下文
          */
-        AVCodecContext *codecContext = avcodec_alloc_context3(codec);
+        codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) {
             //通过JNI回调到Java
-            helper->onPrepareError(THREAD_CHILD, 4);
-
+            if (helper) {
+                helper->onPrepareError(THREAD_CHILD, 4);
+            }
+            avcodec_free_context(&codecContext);
+            avformat_close_input(&formatContext);
             return;
         }
         /**
@@ -103,7 +114,11 @@ void QPlayer::prepare_() {
         r = avcodec_parameters_to_context(codecContext, parameters);
         if (r < 0) {
             //通过JNI回调到Java
-            helper->onPrepareError(THREAD_CHILD, 6);
+            if (helper) {
+                helper->onPrepareError(THREAD_CHILD, 6);
+            }
+            avcodec_free_context(&codecContext);
+            avformat_close_input(&formatContext);
             return;
         }
         /**
@@ -111,9 +126,11 @@ void QPlayer::prepare_() {
          */
         r = avcodec_open2(codecContext, codec, nullptr);
         if (r) {
-            //通过JNI回调到Java
-            helper->onPrepareError(THREAD_CHILD, 7);
-
+            if (helper) {
+                helper->onPrepareError(THREAD_CHILD, 7);
+            }
+            avcodec_free_context(&codecContext);
+            avformat_close_input(&formatContext);
             return;
         }
         //音视频同步
@@ -123,6 +140,9 @@ void QPlayer::prepare_() {
          */
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
             audio_channel = new AudioChannel(stream_index, codecContext, time_base);
+            if (duration != 0) {//非直播
+                audio_channel->setJNICallbackHelper(helper);
+            }
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
             if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
                 continue;
@@ -130,6 +150,9 @@ void QPlayer::prepare_() {
             auto fps = av_q2d(stream->avg_frame_rate);
             video_channel = new VideoChannel(stream_index, codecContext, time_base, fps);
             video_channel->setRenderCallback(renderCallback);
+            if (duration != 0) {//非直播
+                video_channel->setJNICallbackHelper(helper);
+            }
         }
     }
     /**
@@ -137,8 +160,13 @@ void QPlayer::prepare_() {
      */
     if (!audio_channel && !video_channel) {
         //JNI回调到Java
-        helper->onPrepareError(THREAD_CHILD, 8);
-
+        if (helper) {
+            helper->onPrepareError(THREAD_CHILD, 8);
+        }
+        if (codecContext) {
+            avcodec_free_context(&codecContext);
+        }
+        avformat_close_input(&formatContext);
         return;
     }
     /**
@@ -210,3 +238,79 @@ void QPlayer::start_() {//子线程
 void QPlayer::setRenderCallback(RenderCallback callback) {
     this->renderCallback = callback;
 }
+
+
+double QPlayer::getDuration() {
+    return duration;
+}
+
+void QPlayer::seek(double play_progress) {
+    if (play_progress < 0 || play_progress > duration) {
+        return;
+    }
+    if (!audio_channel || !video_channel) {
+        return;
+    }
+    if (!formatContext) {
+        return;
+    }
+    pthread_mutex_lock(&seek_mutex);
+    // -1代表默认，ffmpegZ自动选择音频还是视频
+    int r = av_seek_frame(formatContext, -1, play_progress * AV_TIME_BASE,
+                          AVSEEK_FLAG_BACKWARD);
+    if (r < 0) {
+        return;
+    }
+    if (audio_channel) {
+        audio_channel->packets.setWork(0);
+        audio_channel->frames.setWork(0);
+        audio_channel->packets.clear();
+        audio_channel->frames.clear();
+        audio_channel->packets.setWork(1);
+        audio_channel->frames.setWork(1);
+    }
+    if (video_channel) {
+        video_channel->packets.setWork(0);
+        video_channel->frames.setWork(0);
+        video_channel->packets.clear();
+        video_channel->frames.clear();
+        video_channel->packets.setWork(1);
+        video_channel->frames.setWork(1);
+    }
+    //拖动进度条需要暂停
+    pthread_mutex_unlock(&seek_mutex);
+}
+
+void *task_stop(void *args) {
+    auto *player = static_cast<QPlayer *>(args);
+    player->stop_(player);
+    return nullptr;
+}
+
+void QPlayer::stop_(QPlayer *player) {
+    isPlaying = false;
+    pthread_join(pid_prepare, nullptr);
+    pthread_join(pid_start, nullptr);
+    //等待线程结束再释放
+    if (formatContext) {
+        avformat_close_input(&formatContext);
+        avformat_free_context(formatContext);
+        formatContext = nullptr;
+    }
+    DELETE(audio_channel)
+    DELETE(video_channel)
+    DELETE(player)
+}
+
+void QPlayer::stop() {
+    helper = nullptr;
+    if (audio_channel) {
+        audio_channel->jnihelper = nullptr;
+    }
+    if (video_channel) {
+        video_channel->jnihelper = nullptr;
+    }
+    pthread_create(&pid_stop, nullptr, task_stop, this);
+}
+
+

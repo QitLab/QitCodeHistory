@@ -32,8 +32,6 @@ VideoChannel::VideoChannel(int stream_index, AVCodecContext *codecContext, AVRat
     packets.setSyncCallback(dropAVPacket);
 }
 
-VideoChannel::~VideoChannel() = default;
-
 void *task_video_decode(void *args) {
     auto *video_channel = static_cast<VideoChannel *>(args);
     video_channel->video_decode();
@@ -147,7 +145,7 @@ void VideoChannel::video_play() {
         auto video_time = static_cast<double>(frame->best_effort_timestamp) * av_q2d(time_base);
         auto audio_time = audio_channel->audio_time;
         auto time_diff = video_time - audio_time;
-        qlogd("time_diff : %f", time_diff)
+//        qlogd("time_diff : %f", time_diff)
         if (time_diff > 0) {
             if (time_diff > 1) {
                 //说明二者差距很大
@@ -187,6 +185,16 @@ void VideoChannel::setRenderCallback(RenderCallback callback) {
 }
 
 void VideoChannel::stop() {
+    pthread_join(pid_video_decode, nullptr);
+    pthread_join(pid_video_play, nullptr);
+    isPlaying = false;
+    packets.setWork(0);
+    frames.setWork(0);
+    packets.clear();
+    frames.clear();
+}
 
+VideoChannel::~VideoChannel() {
+    DELETE(audio_channel)
 }
 

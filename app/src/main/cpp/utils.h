@@ -9,3 +9,6 @@
 #define THREAD_CHILD 2 //子线程
 
 #endif //C__LEARNING_UTILS_H
+
+
+#define DELETE(object) if(object) {delete object; object =0;}

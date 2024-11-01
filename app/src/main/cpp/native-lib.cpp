@@ -85,12 +85,22 @@ Java_com_qitian_c_learning_QPlayer_startNative(JNIEnv *env, jobject thiz) {
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_qitian_c_learning_QPlayer_stopNative(JNIEnv *env, jobject thiz) {
-
+    if (player) {
+        player->stop();
+    }
 }
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_qitian_c_learning_QPlayer_releaseNative(JNIEnv *env, jobject thiz) {
-
+    pthread_mutex_lock(&mutex);
+    if (window) {
+        ANativeWindow_release(window);
+        window = nullptr;
+    }
+    pthread_mutex_unlock(&mutex);
+    DELETE(player)
+    DELETE(vm)
+    DELETE(window)
 }
 
 extern "C"
@@ -104,4 +114,20 @@ Java_com_qitian_c_learning_QPlayer_setSurfaceNative(JNIEnv *env, jobject thiz, j
     }
     window = ANativeWindow_fromSurface(env, surface);
     pthread_mutex_unlock(&mutex);
+}
+
+extern "C"
+JNIEXPORT jdouble JNICALL
+Java_com_qitian_c_learning_QPlayer_getDurationNative(JNIEnv *env, jobject thiz) {
+    if (player) {
+        return player->getDuration();
+    }
+    return 0;
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_qitian_c_learning_QPlayer_seekNative(JNIEnv *env, jobject thiz, jdouble play_progress) {
+    if (player) {
+        player->seek(play_progress);
+    }
 }

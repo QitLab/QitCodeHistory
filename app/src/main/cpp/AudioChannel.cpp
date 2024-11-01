@@ -22,7 +22,7 @@ AudioChannel::AudioChannel(int stream_index, AVCodecContext *codecContext, AVRat
 
     //音频重采样上下文
     swr_context = swr_alloc_set_opts(
-            0,
+            nullptr,
             //下面是输出环节
             AV_CH_LAYOUT_STEREO,//声道布局，双声道
             AV_SAMPLE_FMT_S16,//采样大小 16b
@@ -35,18 +35,16 @@ AudioChannel::AudioChannel(int stream_index, AVCodecContext *codecContext, AVRat
     swr_init(swr_context);
 }
 
-AudioChannel::~AudioChannel() {}
-
 void *task_audio_decode(void *args) {
     auto *audio_channel = static_cast<AudioChannel *>(args);
     audio_channel->audio_decode();
-    return 0;
+    return nullptr;
 }
 
 void *task_audio_play(void *args) {
     auto *audio_channel = static_cast<AudioChannel *>(args);
     audio_channel->audio_play();
-    return 0;
+    return nullptr;
 }
 
 void bqPlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *args) {
@@ -62,19 +60,19 @@ void bqPlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *args) {
 
 
 void AudioChannel::start() {
-    isPlaying = 1;
+    isPlaying = true;
     packets.setWork(1);
     frames.setWork(1);
 
     //第一个线程，取出队列压缩包，进行解码，解码后的原始包再push到队列中
-    pthread_create(&pid_audio_decode, 0, task_audio_decode, this);
+    pthread_create(&pid_audio_decode, nullptr, task_audio_decode, this);
     //第二个线程：从队里取出原始包，播放
-    pthread_create(&pid_audio_play, 0, task_audio_play, this);
+    pthread_create(&pid_audio_play, nullptr, task_audio_play, this);
 
 }
 
 void AudioChannel::audio_decode() {
-    AVPacket *packet = 0;
+    AVPacket *packet = nullptr;
     while (isPlaying) {
         if (isPlaying && frames.size() > 100) {
             av_usleep(10 * 1000);
@@ -119,7 +117,7 @@ void AudioChannel::audio_play() {
     SLresult r;
 //    1. 创建引擎并获取引擎接口
 //      1.1 创建引擎对象
-    r = slCreateEngine(&engineObj, 0, 0, 0, 0, 0);
+    r = slCreateEngine(&engineObj, 0, nullptr, 0, nullptr, nullptr);
     if (SL_RESULT_SUCCESS != r) {
         qlogd("创建引擎 slCreateEngine error")
         return;
@@ -144,7 +142,8 @@ void AudioChannel::audio_play() {
     }
 //    2. 设置混音器
 //      2.1 创建混音器
-    r = (*engineInterface)->CreateOutputMix(engineInterface, &outputMixObj, 0, 0, 0);//后面三个参数是特效，不需要
+    r = (*engineInterface)->CreateOutputMix(engineInterface, &outputMixObj, 0, nullptr,
+                                            nullptr);//后面三个参数是特效，不需要
     if (SL_RESULT_SUCCESS != r) {
         qlogd("创建混音器 CreateOutputMix error")
         return;
@@ -170,14 +169,14 @@ void AudioChannel::audio_play() {
 //      3.2 配置音轨
 //          设置混音器
     SLDataLocator_OutputMix local_output_mix = {SL_DATALOCATOR_OUTPUTMIX, outputMixObj};
-    SLDataSink audioSnk = {&local_output_mix, NULL};
+    SLDataSink audioSnk = {&local_output_mix, nullptr};
 //          设置需要开放的接口
     const SLInterfaceID ids[1] = {SL_IID_BUFFERQUEUE};
     const SLboolean req[1] = {SL_BOOLEAN_TRUE};
 //      3.3 创建播放器
     r = (*engineInterface)->CreateAudioPlayer(
             engineInterface,//引擎接口
-            &bpPlayerObj,//播放器
+            &bqPlayerObj,//播放器
             &audioSrc,//音频配置
             &audioSnk,//混音器
             1,//开放的参数个数
@@ -185,13 +184,13 @@ void AudioChannel::audio_play() {
             req//上面的buffer需要开放出去
     );
 //      3.4 初始化播放器
-    r = (*bpPlayerObj)->Realize(bpPlayerObj, SL_BOOLEAN_FALSE);
+    r = (*bqPlayerObj)->Realize(bqPlayerObj, SL_BOOLEAN_FALSE);
     if (SL_RESULT_SUCCESS != r) {
         qlogd("初始化播放器 Realize error")
         return;
     }
 //      3.5 获取播放器接口
-    r = (*bpPlayerObj)->GetInterface(bpPlayerObj, SL_IID_PLAY, &bpPlayerInterface);
+    r = (*bqPlayerObj)->GetInterface(bqPlayerObj, SL_IID_PLAY, &bqPlayerInterface);
     if (SL_RESULT_SUCCESS != r) {
         qlogd("获取播放器接口 GetInterface error")
         return;
@@ -199,26 +198,26 @@ void AudioChannel::audio_play() {
     qlogd("创建播放器成功")
 //    4. 设置播放回调
 //      4.1 获取播放队列接口
-    r = (*bpPlayerObj)->GetInterface(bpPlayerObj, SL_IID_BUFFERQUEUE, &bpPlayerBufferQueue);
+    r = (*bqPlayerObj)->GetInterface(bqPlayerObj, SL_IID_BUFFERQUEUE, &bqPlayerBufferQueue);
     if (SL_RESULT_SUCCESS != r) {
         qlogd("获取播放队列 GetInterface error")
         return;
     }
 //      设置回调
-    r = (*bpPlayerBufferQueue)->RegisterCallback(bpPlayerBufferQueue, bqPlayerCallback,
+    r = (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallback,
                                                  this);//this是给callback的参数
     if (SL_RESULT_SUCCESS != r) {
         qlogd("设置回调 RegisterCallback error")
         return;
     }
 //    5. 设置播放器状态为播放
-    r = (*bpPlayerInterface)->SetPlayState(bpPlayerInterface, SL_PLAYSTATE_PLAYING);
+    r = (*bqPlayerInterface)->SetPlayState(bqPlayerInterface, SL_PLAYSTATE_PLAYING);
     if (SL_RESULT_SUCCESS != r) {
         qlogd("设置播放器状态为播放 SetPlayState error")
         return;
     }
 //    6. 手动激活回调
-    bqPlayerCallback(bpPlayerBufferQueue, this);
+    bqPlayerCallback(bqPlayerBufferQueue, this);
 //    7. 释放
 }
 
@@ -227,7 +226,7 @@ int AudioChannel::getPCM() {
     int pcm_data_size = 0;
     //获取PCM数据
     //PCM数据在frames队列中，是32位的，待重采样
-    AVFrame *frame = 0;
+    AVFrame *frame = nullptr;
     while (isPlaying) {
         int r = frames.pop(frame);
         if (!isPlaying) {
@@ -257,11 +256,46 @@ int AudioChannel::getPCM() {
         //音视频同步
         //时间基Timebase的时间戳
         audio_time = frame->best_effort_timestamp * av_q2d(time_base);
+        if (jnihelper) {
+            jnihelper->onProgress(THREAD_CHILD, audio_time);
+        }
         break;
     }
     return pcm_data_size;
 }
 
 void AudioChannel::stop() {
+    //等解码和播放线程结束再释放
+    pthread_join(pid_audio_decode, nullptr);
+    pthread_join(pid_audio_play, nullptr);
+    isPlaying = false;
+    packets.setWork(0);
+    frames.setWork(0);
 
+    if(bqPlayerInterface){
+        (*bqPlayerInterface)->SetPlayState(bqPlayerInterface,SL_PLAYSTATE_STOPPED);
+        bqPlayerInterface = nullptr;
+    }
+    if(bqPlayerObj){
+        (*bqPlayerObj)->Destroy(bqPlayerObj);
+        bqPlayerObj = nullptr;
+        bqPlayerBufferQueue = nullptr;
+    }
+    if(outputMixObj){
+        (*outputMixObj)->Destroy(outputMixObj);
+        outputMixObj = nullptr;
+    }
+    if(engineObj){
+        (*engineObj)->Destroy(engineObj);
+        engineObj = nullptr;
+    }
+    packets.clear();
+    frames.clear();
+}
+
+AudioChannel::~AudioChannel() {
+    if (swr_context) {
+        swr_free(&swr_context);
+    }
+    DELETE(out_buffers)
 }

@@ -53,7 +53,6 @@ public:
         pthread_mutex_lock(&mutex);
         while (work && queue.empty()) {
             pthread_cond_wait(&cond, &mutex);
-
         }
         if (!queue.empty()) {
             value = queue.front();

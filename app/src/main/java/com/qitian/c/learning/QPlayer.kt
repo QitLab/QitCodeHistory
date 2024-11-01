@@ -45,24 +45,13 @@ class QPlayer : SurfaceHolder.Callback {
     var surfaceHolder: SurfaceHolder? = null
     var dataSource: String = ""
 
-    fun prepare() {
-        prepareNative(dataSource)
-    }
+    fun getDuration() = getDurationNative()
+    fun seek(playProgress: Double) = seekNative(playProgress)
 
-
-    fun start() {
-        startNative()
-    }
-
-
-    fun stop() {
-        stopNative()
-    }
-
-
-    fun release() {
-        releaseNative()
-    }
+    fun prepare() = prepareNative(dataSource)
+    fun start() = startNative()
+    fun stop() = stopNative()
+    fun release() = releaseNative()
 
     fun onPrepared() {
         onPreparedListener?.onPrepared()
@@ -72,9 +61,14 @@ class QPlayer : SurfaceHolder.Callback {
         onPreparedListener?.onError(FFMpegPrepareError.getMsgByErrorCode(errorCode))
     }
 
+    fun onPlayProgress(progress: Double) {
+        onPreparedListener?.onPlayProgress(progress)
+    }
+
     interface OnPreparedListener {
         fun onPrepared()
         fun onError(msg: String)
+        fun onPlayProgress(progress: Double)
     }
 
 
@@ -90,18 +84,20 @@ class QPlayer : SurfaceHolder.Callback {
 
     }
 
-    fun setSurfaceView(surfaceView: SurfaceView){
-        if(this.surfaceHolder!=null){
+    fun setSurfaceView(surfaceView: SurfaceView) {
+        if (this.surfaceHolder != null) {
             surfaceHolder?.removeCallback(this)
         }
         surfaceHolder = surfaceView.holder
         surfaceHolder?.addCallback(this)
     }
 
-    external fun prepareNative(dataSource: String)
-    external fun startNative()
-    external fun stopNative()
-    external fun releaseNative()
-    external fun setSurfaceNative(surface: Surface)
+    private external fun prepareNative(dataSource: String)
+    private external fun startNative()
+    private external fun stopNative()
+    private external fun releaseNative()
+    private external fun setSurfaceNative(surface: Surface)
+    private external fun getDurationNative(): Double
+    private external fun seekNative(playProgress: Double)
 
 }

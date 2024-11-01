@@ -16,6 +16,8 @@ private:
     jobject job{};
     jmethodID jmd_prepared{};
     jmethodID jmd_prepare_error{};
+    jmethodID jmd_play_progress{};
+
 
 public:
     JNICallbackHelper(JavaVM *pVm, JNIEnv *pEnv, jobject job);
@@ -25,6 +27,8 @@ public:
     void onPrepared(int thread_mode);
 
     void onPrepareError(int thread_mode, int error_code);
+
+    void onProgress(int thread_mode, double progress);
 };
 
 
