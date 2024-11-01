@@ -23,7 +23,9 @@ class MainActivity : AppCompatActivity() {
         // Example of a call to a native method
         binding.sampleText.text = stringFromJNI()
         player.setSurfaceView(binding.surfaceView)
-        player.dataSource = File("${Environment.getExternalStorageDirectory()}${File.separator}demo.mp4").absolutePath
+        player.dataSource =
+            File("${Environment.getExternalStorageDirectory()}${File.separator}demo.mp4").absolutePath
+//        "rtmp://liteavapp.qcloud.com/live/liteavdemoplayerstreamid"
         player.onPreparedListener = object : QPlayer.OnPreparedListener {
             override fun onPrepared(){
                 runOnUiThread {

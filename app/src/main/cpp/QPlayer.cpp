@@ -50,6 +50,7 @@ void QPlayer::prepare_() {
     av_dict_free(&dictionary);
 
     if (r) {
+        qlogd("onPrepareError %d",r)
         helper->onPrepareError(THREAD_CHILD, 1);
 //        char * error = av_err2str(r);
         //通过JNI回调到Java
@@ -115,13 +116,19 @@ void QPlayer::prepare_() {
 
             return;
         }
+        //音视频同步
+        AVRational time_base = stream->time_base;
         /**
          * 第十步：从编解码器参数中获取流类型 codec_type
          */
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
-            audio_channel = new AudioChannel(stream_index, codecContext);
+            audio_channel = new AudioChannel(stream_index, codecContext, time_base);
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
-            video_channel = new VideoChannel(stream_index, codecContext);
+            if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                continue;
+            }
+            auto fps = av_q2d(stream->avg_frame_rate);
+            video_channel = new VideoChannel(stream_index, codecContext, time_base, fps);
             video_channel->setRenderCallback(renderCallback);
         }
     }
@@ -152,6 +159,7 @@ void *task_start(void *args) {
 void QPlayer::start() {
     isPlaying = true;
     if (video_channel) {
+        video_channel->setAudioChannel(audio_channel);
         video_channel->start();
     }
     if (audio_channel) {
@@ -163,12 +171,12 @@ void QPlayer::start() {
 
 void QPlayer::start_() {//子线程
     while (isPlaying) {
-        if(video_channel && video_channel->packets.size() > 100){
-            av_usleep(10*1000);
+        if (video_channel && video_channel->packets.size() > 100) {
+            av_usleep(10 * 1000);
             continue;
         }
-        if(audio_channel && audio_channel->packets.size() > 100){
-            av_usleep(10*1000);
+        if (audio_channel && audio_channel->packets.size() > 100) {
+            av_usleep(10 * 1000);
             continue;
         }
         //VPacket 可能是音频也可能是视频（压缩包）
@@ -186,7 +194,7 @@ void QPlayer::start_() {//子线程
 
         } else if (r == AVERROR_EOF) {
             //文件播放完成
-            if(video_channel->packets.empty() && audio_channel->packets.empty()){
+            if (video_channel->packets.empty() && audio_channel->packets.empty()) {
                 break;
             }
         } else {

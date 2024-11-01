@@ -33,8 +33,10 @@ public:
     SLObjectItf bpPlayerObj{};//播放器
     SLPlayItf bpPlayerInterface{};//播放器接口
     SLAndroidSimpleBufferQueueItf bpPlayerBufferQueue{};//播放器队列接口
+
+    double audio_time{};
 public:
-    AudioChannel(int stream_index, AVCodecContext *codecContext);
+    AudioChannel(int stream_index, AVCodecContext *codecContext, AVRational time_base);
 
     virtual ~AudioChannel();
 

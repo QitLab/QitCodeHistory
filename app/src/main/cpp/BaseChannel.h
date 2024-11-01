@@ -21,8 +21,12 @@ public:
     bool isPlaying{};//是否正在播放
     AVCodecContext *codecContext{};//解码器上下文
 
-    BaseChannel(int stream_index, AVCodecContext *codecContext) : stream_index(stream_index),
-                                                                  codecContext(codecContext) {
+    AVRational time_base{};
+
+    BaseChannel(int stream_index, AVCodecContext *codecContext, AVRational time_base)
+            : stream_index(stream_index),
+              codecContext(codecContext),
+              time_base(time_base) {
         packets.setReleaseCallback(releaseAVPacket);
         frames.setReleaseCallback(releaseAVFrame);
     }

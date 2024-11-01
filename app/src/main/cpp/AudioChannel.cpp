@@ -4,8 +4,9 @@
 
 #include "AudioChannel.h"
 
-AudioChannel::AudioChannel(int stream_index, AVCodecContext *codecContext) : BaseChannel(
-        stream_index, codecContext) {
+AudioChannel::AudioChannel(int stream_index, AVCodecContext *codecContext, AVRational time_base)
+        : BaseChannel(
+        stream_index, codecContext, time_base) {
     //音频三要素： 采样率、位深、声道数
     // 音频压缩数据包是AAC， 三要素一般是：44100、32b、2
     // 一般没有32位的，AAC为了运算效率32位浮点运算效率高，所以需要重采样，变为手机参数
@@ -47,6 +48,7 @@ void *task_audio_play(void *args) {
     audio_channel->audio_play();
     return 0;
 }
+
 void bqPlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *args) {
     auto *audio_channel = static_cast<AudioChannel *>(args);
     int pcm_size = audio_channel->getPCM();
@@ -74,7 +76,7 @@ void AudioChannel::start() {
 void AudioChannel::audio_decode() {
     AVPacket *packet = 0;
     while (isPlaying) {
-         if(isPlaying && frames.size() > 100){
+        if (isPlaying && frames.size() > 100) {
             av_usleep(10 * 1000);
             continue;
         }
@@ -99,7 +101,7 @@ void AudioChannel::audio_decode() {
             continue;
         } else if (r != 0) {
             //错误
-            if(avFrame){
+            if (avFrame) {
                 releaseAVFrame(&avFrame);
             }
             break;
@@ -252,6 +254,9 @@ int AudioChannel::getPCM() {
                 frame->nb_samples//输入的样本数
         );
         pcm_data_size = samples_per_channel * out_sample_size * out_channels;
+        //音视频同步
+        //时间基Timebase的时间戳
+        audio_time = frame->best_effort_timestamp * av_q2d(time_base);
         break;
     }
     return pcm_data_size;

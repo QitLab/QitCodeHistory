@@ -5,9 +5,31 @@
 #include "VideoChannel.h"
 #include "BaseChannel.h"
 
-VideoChannel::VideoChannel(int stream_index, AVCodecContext *codecContext) : BaseChannel(
-        stream_index, codecContext) {
+void dropAVFrame(queue<AVFrame *> &q) {
+    if (!q.empty()) {
+        AVFrame *frame = q.front();
+        BaseChannel::releaseAVFrame(&frame);
+        q.pop();
+    }
+}
 
+void dropAVPacket(queue<AVPacket *> &q) {
+    while (!q.empty()) {
+        AVPacket *packet = q.front();
+        if (packet->flags != AV_PKT_FLAG_KEY) {
+            BaseChannel::releaseAVPacket(&packet);
+            q.pop();
+        } else {
+            break;
+        }
+    }
+}
+
+VideoChannel::VideoChannel(int stream_index, AVCodecContext *codecContext, AVRational time_base,
+                           double fps) : BaseChannel(
+        stream_index, codecContext, time_base), fps(fps) {
+    frames.setSyncCallback(dropAVFrame);
+    packets.setSyncCallback(dropAVPacket);
 }
 
 VideoChannel::~VideoChannel() = default;
@@ -36,10 +58,14 @@ void VideoChannel::start() {
 
 }
 
+void VideoChannel::setAudioChannel(AudioChannel *channel) {
+    this->audio_channel = channel;
+}
+
 void VideoChannel::video_decode() {
     AVPacket *packet = nullptr;
     while (isPlaying) {
-        if(isPlaying && frames.size() > 100){
+        if (isPlaying && frames.size() > 100) {
             av_usleep(10 * 1000);
             continue;
         }
@@ -63,7 +89,7 @@ void VideoChannel::video_decode() {
             //B帧会参考前后，等待P帧出来
             continue;
         } else if (r != 0) {
-            if(avFrame){
+            if (avFrame) {
                 releaseAVFrame(&avFrame);
             }
             break;
@@ -113,6 +139,35 @@ void VideoChannel::video_play() {
                   dst_data,
                   dst_linesize
         );
+        //音视频同步
+        //首先增加fps的间隔
+        auto extra_delay = frame->repeat_pict / (2.0 * fps);
+        auto fps_delay = 1.0 / fps;//根据fps得到每一帧消耗的时间
+        auto real_delay = extra_delay + fps_delay;
+        auto video_time = static_cast<double>(frame->best_effort_timestamp) * av_q2d(time_base);
+        auto audio_time = audio_channel->audio_time;
+        auto time_diff = video_time - audio_time;
+        qlogd("time_diff : %f", time_diff)
+        if (time_diff > 0) {
+            if (time_diff > 1) {
+                //说明二者差距很大
+                av_usleep(static_cast<int>(real_delay * 2 * 1000 * 1000));
+            } else {
+                //差距不大
+                av_usleep(static_cast<int>((real_delay + time_diff) * 1000 * 1000));
+            }
+        } else if (time_diff < 0) {
+            //音频 > 视频，要丢帧。 I帧不能丢
+            // 从 frames和packets丢弃
+            if (fabs(time_diff) <= 0.03) {
+                //多线程安全
+                frames.sync();
+                continue;
+            }
+        } else {
+
+        }
+
         //ANativeWindows
         renderCallback(dst_data[0],
                        codecContext->width,
