@@ -37,8 +37,8 @@ class MainActivity : AppCompatActivity(), SeekBar.OnSeekBarChangeListener {
 
         player.setSurfaceView(binding.surfaceView)
         player.dataSource =
-            File("${Environment.getExternalStorageDirectory()}${File.separator}demo.mp4").absolutePath
-//        "rtmp://liteavapp.qcloud.com/live/liteavdemoplayerstreamid"
+//            File("${Environment.getExternalStorageDirectory()}${File.separator}demo.mp4").absolutePath
+        "rtmp://liteavapp.qcloud.com/live/liteavdemoplayerstreamid"
         player.onPreparedListener = object : QPlayer.OnPreparedListener {
             @SuppressLint("SetTextI18n")
             override fun onPrepared() {
